@@ -581,7 +581,7 @@ function Index() {
                       <div className="absolute inset-x-0 top-2 z-10 pb-1 text-center">
                         <div
                           className={cn(
-                            "inline-block truncate rounded-full px-2 text-[12px] sm:text-[16px]",
+                            "block truncate rounded-full px-2 text-[12px] sm:text-[16px]",
                             today && !data && "border-2 border-foreground",
                           )}
                           style={{ color: "#5c5c5c" }}
