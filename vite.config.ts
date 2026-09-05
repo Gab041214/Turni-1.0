@@ -19,6 +19,11 @@ export default defineConfig({
         registerType: "autoUpdate",
         injectRegister: null,
         filename: "sw.js",
+        // IMPORTANTE: senza questo, il plugin genera sw.js in "dist/" (cartella intermedia
+        // di Vite), che Nitro NON copia in .output/public (la cartella servita davvero da
+        // Cloudflare). Risultato: /sw.js risponde con l'HTML dell'app invece del vero
+        // service worker, la registrazione fallisce in silenzio e l'offline non funziona mai.
+        outDir: ".output/public",
         devOptions: { enabled: false },
         manifest: false,
         workbox: {
