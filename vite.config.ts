@@ -28,8 +28,12 @@ export default defineConfig({
         manifest: false,
         workbox: {
           globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
-          navigateFallback: "/",
-          navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//],
+          // NIENTE navigateFallback qui: genererebbe automaticamente una NavigationRoute
+          // basata su createHandlerBoundToURL("/"), che presuppone un index.html precaricato.
+          // Questa app è renderizzata dal server (Cloudflare Worker, non un sito statico):
+          // non esiste un simile file in cache, quindi quella route fallirebbe silenziosamente
+          // impedendo l'attivazione del Service Worker (e quindi l'intero funzionamento offline).
+          // La regola NetworkFirst qui sotto gestisce già correttamente le navigazioni.
           runtimeCaching: [
             {
               urlPattern: ({ request }: { request: Request }) => request.mode === "navigate",
