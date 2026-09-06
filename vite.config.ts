@@ -28,12 +28,13 @@ export default defineConfig({
         manifest: false,
         workbox: {
           globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
-          // NIENTE navigateFallback qui: genererebbe automaticamente una NavigationRoute
-          // basata su createHandlerBoundToURL("/"), che presuppone un index.html precaricato.
-          // Questa app è renderizzata dal server (Cloudflare Worker, non un sito statico):
-          // non esiste un simile file in cache, quindi quella route fallirebbe silenziosamente
-          // impedendo l'attivazione del Service Worker (e quindi l'intero funzionamento offline).
-          // La regola NetworkFirst qui sotto gestisce già correttamente le navigazioni.
+          // Il plugin ha 'index.html' come default SEMPRE attivo per navigateFallback
+          // (fuso via Object.assign con le nostre opzioni): omettere semplicemente questa
+          // chiave NON basta a disattivarlo, va sovrascritta esplicitamente con undefined.
+          // Senza questo, il Service Worker genera una NavigationRoute che punta a un file
+          // precaricato "index.html" mai esistito (questa app è renderizzata dal server, non
+          // un sito statico) — il SW va in errore all'attivazione e l'offline non funziona mai.
+          navigateFallback: undefined,
           runtimeCaching: [
             {
               urlPattern: ({ request }: { request: Request }) => request.mode === "navigate",
