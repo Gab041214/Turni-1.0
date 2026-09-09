@@ -276,7 +276,7 @@ function blockData(row: string[], cols: number[]): DayData {
 }
 
 
-const SWIPE_ACTIONS_WIDTH = 80;
+const SWIPE_ACTIONS_WIDTH = 88; // 2 pulsanti da 36px + gap 8px + padding destro 8px
 
 /** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). */
 function EntryRow({
@@ -288,29 +288,29 @@ function EntryRow({
   onDelete: () => void;
   onRename: (newName: string) => void;
 }) {
-  const [offset, setOffset] = useState(0);
+  const [reveal, setReveal] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const startX = useRef(0);
-  const startOffset = useRef(0);
+  const startReveal = useRef(0);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (editing) return;
     setDragging(true);
     startX.current = e.clientX;
-    startOffset.current = offset;
+    startReveal.current = reveal;
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
-    const delta = e.clientX - startX.current;
-    setOffset(Math.min(0, Math.max(-SWIPE_ACTIONS_WIDTH, startOffset.current + delta)));
+    const delta = startX.current - e.clientX;
+    setReveal(Math.min(SWIPE_ACTIONS_WIDTH, Math.max(0, startReveal.current + delta)));
   };
   const onPointerUp = () => {
     if (!dragging) return;
     setDragging(false);
-    setOffset((current) => (current < -SWIPE_ACTIONS_WIDTH / 2 ? -SWIPE_ACTIONS_WIDTH : 0));
+    setReveal((current) => (current > SWIPE_ACTIONS_WIDTH / 2 ? SWIPE_ACTIONS_WIDTH : 0));
   };
 
   const confirmRename = () => {
@@ -320,8 +320,11 @@ function EntryRow({
   };
 
   return (
-    <li className="relative h-11 overflow-hidden rounded-xl bg-secondary">
-      <div className="absolute inset-0 flex items-center justify-end gap-2 pr-2">
+    <li className="relative h-11 overflow-hidden rounded-xl">
+      <div
+        className="absolute inset-y-0 right-0 flex items-center justify-end gap-2 pr-2"
+        style={{ width: SWIPE_ACTIONS_WIDTH }}
+      >
         <button
           type="button"
           aria-label={`Modifica ${name}`}
@@ -329,7 +332,7 @@ function EntryRow({
           onClick={() => {
             setDraft(name);
             setEditing(true);
-            setOffset(0);
+            setReveal(0);
           }}
         >
           <Keyboard className="size-[18px]" />
@@ -344,8 +347,11 @@ function EntryRow({
         </button>
       </div>
       <div
-        className="relative flex h-full touch-pan-y items-center rounded-xl bg-secondary px-3"
-        style={{ transform: `translateX(${offset}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
+        className="relative flex h-11 touch-pan-y items-center overflow-hidden rounded-xl bg-secondary px-3"
+        style={{
+          width: `calc(100% - ${reveal}px)`,
+          transition: dragging ? "none" : "width 0.2s ease",
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
