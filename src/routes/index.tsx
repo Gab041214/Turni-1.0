@@ -322,7 +322,7 @@ function EntryRow({
   return (
     <li className="relative h-11 overflow-hidden rounded-xl">
       <div
-        className="absolute inset-y-0 right-0 flex items-center justify-end gap-2"
+        className="absolute inset-y-0 right-0 flex items-center justify-end gap-1 pl-1"
         style={{ width: SWIPE_ACTIONS_WIDTH }}
       >
         <button
