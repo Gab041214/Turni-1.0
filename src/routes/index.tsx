@@ -188,6 +188,19 @@ async function parseExcel(
 
 
 /** Restituisce nero o bianco per il massimo contrasto rispetto al colore esadecimale dato. */
+type ShiftEntry = { name: string; startLabel: string; endLabel: string; startMin: number; endMin: number };
+
+/** Calcola posizione e larghezza (in %) del tratto colorato di un turno sul range 10:00-20:00. */
+function barMetrics(startMin: number, endMin: number): { left: number; width: number } {
+  const RANGE_START = 10 * 60;
+  const RANGE_END = 20 * 60;
+  const span = RANGE_END - RANGE_START;
+  const clamp = (v: number) => Math.min(Math.max(v, RANGE_START), RANGE_END);
+  const left = ((clamp(startMin) - RANGE_START) / span) * 100;
+  const right = ((clamp(endMin) - RANGE_START) / span) * 100;
+  return { left, width: Math.max(right - left, 3) };
+}
+
 function contrastTextColor(hex: string): string {
   const clean = hex.replace("#", "");
   const r = parseInt(clean.slice(0, 2), 16) / 255;
@@ -276,7 +289,7 @@ function Index() {
   );
   const [manageOpen, setManageOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
-  const [dayPopup, setDayPopup] = useState<{ date: Date; apre: string[]; chiude: string[] } | null>(null);
+  const [dayPopup, setDayPopup] = useState<{ date: Date; apre: ShiftEntry[]; chiude: ShiftEntry[] } | null>(null);
   const [newOption, setNewOption] = useState("");
   const [accent, setAccent] = useState(DEFAULT_ACCENT);
   const setAccentColor = (c: string) => {
@@ -425,15 +438,17 @@ function Index() {
   const openDayPopup = (date: Date | undefined) => {
     if (!date || !referenceSunday || rows.length === 0) return;
     const offset = differenceInCalendarDays(date, referenceSunday);
-    const apre: string[] = [];
-    const chiude: string[] = [];
+    const apre: ShiftEntry[] = [];
+    const chiude: ShiftEntry[] = [];
     for (const name of options) {
       const data = peopleByOffset.get(name)?.get(offset);
       if (!data) continue;
       const s = toMinutes(data.start);
       const e = toMinutes(data.end);
-      if (s !== null && s <= 10 * 60) apre.push(name);
-      if (e !== null && e >= 20 * 60) chiude.push(name);
+      if (s === null || e === null) continue;
+      const entry: ShiftEntry = { name, startLabel: data.start, endLabel: data.end, startMin: s, endMin: e };
+      if (s <= 10 * 60) apre.push(entry);
+      if (e >= 20 * 60) chiude.push(entry);
     }
     setDayPopup({ date, apre, chiude });
   };
@@ -650,11 +665,25 @@ function Index() {
             <h3 className="mb-1.5 text-lg font-semibold text-foreground">Chi apre</h3>
             {dayPopup && dayPopup.apre.length > 0 ? (
               <ul className="mb-4 space-y-1">
-                {dayPopup.apre.map((n) => (
-                  <li key={n} className="rounded-xl bg-secondary px-3 py-2 text-sm text-foreground">
-                    {n}
-                  </li>
-                ))}
+                {dayPopup.apre.map((entry) => {
+                  const { left, width } = barMetrics(entry.startMin, entry.endMin);
+                  return (
+                    <li
+                      key={entry.name}
+                      className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm text-foreground"
+                    >
+                      <span className="flex-1 truncate">{entry.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
+                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-border/60">
+                        <div
+                          className="absolute inset-y-0 rounded-full"
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: accent }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{entry.endLabel}</span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="mb-4 text-sm text-muted-foreground">Nessuno.</p>
@@ -663,11 +692,25 @@ function Index() {
             <h3 className="mb-1.5 text-lg font-semibold text-foreground">Chi chiude</h3>
             {dayPopup && dayPopup.chiude.length > 0 ? (
               <ul className="space-y-1">
-                {dayPopup.chiude.map((n) => (
-                  <li key={n} className="rounded-xl bg-secondary px-3 py-2 text-sm text-foreground">
-                    {n}
-                  </li>
-                ))}
+                {dayPopup.chiude.map((entry) => {
+                  const { left, width } = barMetrics(entry.startMin, entry.endMin);
+                  return (
+                    <li
+                      key={entry.name}
+                      className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm text-foreground"
+                    >
+                      <span className="flex-1 truncate">{entry.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
+                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-border/60">
+                        <div
+                          className="absolute inset-y-0 rounded-full"
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: accent }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{entry.endLabel}</span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground">Nessuno.</p>
