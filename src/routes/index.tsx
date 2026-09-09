@@ -670,7 +670,7 @@ function Index() {
                   return (
                     <li
                       key={entry.name}
-                      className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm text-foreground"
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-foreground" style={{ backgroundColor: "#D5D5DC" }}
                     >
                       <span className="flex-1 truncate">{entry.name}</span>
                       <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
@@ -697,7 +697,7 @@ function Index() {
                   return (
                     <li
                       key={entry.name}
-                      className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm text-foreground"
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-foreground" style={{ backgroundColor: "#D5D5DC" }}
                     >
                       <span className="flex-1 truncate">{entry.name}</span>
                       <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
