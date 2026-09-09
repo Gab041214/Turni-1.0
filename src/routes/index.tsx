@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Trash2, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { Upload, Trash2, Users, X, Keyboard } from "lucide-react";
 import { format, addDays, isToday, startOfMonth, endOfMonth, startOfWeek, differenceInCalendarWeeks, differenceInCalendarDays } from "date-fns";
 import { it } from "date-fns/locale";
 
@@ -275,6 +275,101 @@ function blockData(row: string[], cols: number[]): DayData {
   return { start, end, total, late, shortShift };
 }
 
+
+const SWIPE_ACTIONS_WIDTH = 80;
+
+/** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). */
+function EntryRow({
+  name,
+  onDelete,
+  onRename,
+}: {
+  name: string;
+  onDelete: () => void;
+  onRename: (newName: string) => void;
+}) {
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const startX = useRef(0);
+  const startOffset = useRef(0);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (editing) return;
+    setDragging(true);
+    startX.current = e.clientX;
+    startOffset.current = offset;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    const delta = e.clientX - startX.current;
+    setOffset(Math.min(0, Math.max(-SWIPE_ACTIONS_WIDTH, startOffset.current + delta)));
+  };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    setDragging(false);
+    setOffset((current) => (current < -SWIPE_ACTIONS_WIDTH / 2 ? -SWIPE_ACTIONS_WIDTH : 0));
+  };
+
+  const confirmRename = () => {
+    const v = draft.trim();
+    if (v && v !== name) onRename(v);
+    setEditing(false);
+  };
+
+  return (
+    <li className="relative h-11 overflow-hidden rounded-xl bg-secondary">
+      <div className="absolute inset-0 flex items-center justify-end gap-2 pr-2">
+        <button
+          type="button"
+          aria-label={`Modifica ${name}`}
+          className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#0A84FF] text-white"
+          onClick={() => {
+            setDraft(name);
+            setEditing(true);
+            setOffset(0);
+          }}
+        >
+          <Keyboard className="size-[18px]" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Elimina ${name}`}
+          className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#FF3B30] text-white"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-[18px]" />
+        </button>
+      </div>
+      <div
+        className="relative flex h-full touch-pan-y items-center rounded-xl bg-secondary px-3"
+        style={{ transform: `translateX(${offset}px)`, transition: dragging ? "none" : "transform 0.2s ease" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmRename();
+              else if (e.key === "Escape") setEditing(false);
+            }}
+            onBlur={confirmRename}
+            className="w-full bg-transparent text-sm text-foreground outline-none"
+          />
+        ) : (
+          <span className="truncate text-sm text-foreground">{name}</span>
+        )}
+      </div>
+    </li>
+  );
+}
 
 function Index() {
   const [rows, setRows] = useState<string[][]>([]);
@@ -735,7 +830,6 @@ function Index() {
               if (v && !options.includes(v)) {
                 persist([...options, v]);
                 setSelected(v);
-                setManageOpen(false);
               }
               setNewOption("");
             }}
@@ -755,23 +849,19 @@ function Index() {
               <li className="py-4 text-center text-sm text-muted-foreground">Nessuna voce.</li>
             )}
             {sortedOptions.map((o) => (
-              <li
+              <EntryRow
                 key={o}
-                className="flex items-center justify-between rounded-xl bg-secondary px-3 py-2"
-              >
-                <span className="truncate text-sm text-foreground">{o}</span>
-                <button
-                  type="button"
-                  aria-label={`Elimina ${o}`}
-                  className="text-muted-foreground transition-colors hover:text-destructive"
-                  onClick={() => {
-                    persist(options.filter((x) => x !== o));
-                    setSelected("");
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </li>
+                name={o}
+                onDelete={() => {
+                  persist(options.filter((x) => x !== o));
+                  if (selected === o) setSelected("");
+                }}
+                onRename={(newName) => {
+                  if (options.includes(newName)) return;
+                  persist(options.map((x) => (x === o ? newName : x)));
+                  if (selected === o) setSelected(newName);
+                }}
+              />
             ))}
           </ul>
           <Button variant="outline" className="rounded-xl" onClick={() => setManageOpen(false)}>
