@@ -276,7 +276,7 @@ function blockData(row: string[], cols: number[]): DayData {
 }
 
 
-const SWIPE_ACTIONS_WIDTH = 88; // 2 pulsanti da 36px + gap 8px + padding destro 8px
+const SWIPE_ACTIONS_WIDTH = 80; // 2 pulsanti da 36px + gap 8px, allineati al bordo destro
 
 /** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). */
 function EntryRow({
@@ -322,7 +322,7 @@ function EntryRow({
   return (
     <li className="relative h-11 overflow-hidden rounded-xl">
       <div
-        className="absolute inset-y-0 right-0 flex items-center justify-end gap-2 pr-2"
+        className="absolute inset-y-0 right-0 flex items-center justify-end gap-2"
         style={{ width: SWIPE_ACTIONS_WIDTH }}
       >
         <button
