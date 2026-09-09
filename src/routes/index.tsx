@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Trash2, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { Upload, Trash2, Users, X, Keyboard } from "lucide-react";
 import { format, addDays, isToday, startOfMonth, endOfMonth, startOfWeek, differenceInCalendarWeeks, differenceInCalendarDays } from "date-fns";
 import { it } from "date-fns/locale";
 
@@ -188,6 +188,19 @@ async function parseExcel(
 
 
 /** Restituisce nero o bianco per il massimo contrasto rispetto al colore esadecimale dato. */
+type ShiftEntry = { name: string; startLabel: string; endLabel: string; startMin: number; endMin: number };
+
+/** Calcola posizione e larghezza (in %) del tratto colorato di un turno sul range 10:00-20:00. */
+function barMetrics(startMin: number, endMin: number): { left: number; width: number } {
+  const RANGE_START = 10 * 60;
+  const RANGE_END = 20 * 60;
+  const span = RANGE_END - RANGE_START;
+  const clamp = (v: number) => Math.min(Math.max(v, RANGE_START), RANGE_END);
+  const left = ((clamp(startMin) - RANGE_START) / span) * 100;
+  const right = ((clamp(endMin) - RANGE_START) / span) * 100;
+  return { left, width: Math.max(right - left, 3) };
+}
+
 function contrastTextColor(hex: string): string {
   const clean = hex.replace("#", "");
   const r = parseInt(clean.slice(0, 2), 16) / 255;
@@ -263,6 +276,107 @@ function blockData(row: string[], cols: number[]): DayData {
 }
 
 
+const SWIPE_ACTIONS_WIDTH = 80; // 2 pulsanti da 36px + gap 8px, allineati al bordo destro
+
+/** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). */
+function EntryRow({
+  name,
+  onDelete,
+  onRename,
+}: {
+  name: string;
+  onDelete: () => void;
+  onRename: (newName: string) => void;
+}) {
+  const [reveal, setReveal] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const startX = useRef(0);
+  const startReveal = useRef(0);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (editing) return;
+    setDragging(true);
+    startX.current = e.clientX;
+    startReveal.current = reveal;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    const delta = startX.current - e.clientX;
+    setReveal(Math.min(SWIPE_ACTIONS_WIDTH, Math.max(0, startReveal.current + delta)));
+  };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    setDragging(false);
+    setReveal((current) => (current > SWIPE_ACTIONS_WIDTH / 2 ? SWIPE_ACTIONS_WIDTH : 0));
+  };
+
+  const confirmRename = () => {
+    const v = draft.trim();
+    if (v && v !== name) onRename(v);
+    setEditing(false);
+  };
+
+  return (
+    <li className="relative h-11 overflow-hidden rounded-xl">
+      <div
+        className="absolute inset-y-0 right-0 flex items-center justify-end gap-1 pl-1"
+        style={{ width: SWIPE_ACTIONS_WIDTH }}
+      >
+        <button
+          type="button"
+          aria-label={`Modifica ${name}`}
+          className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#0A84FF] text-white"
+          onClick={() => {
+            setDraft(name);
+            setEditing(true);
+            setReveal(0);
+          }}
+        >
+          <Keyboard className="size-[18px]" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Elimina ${name}`}
+          className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#FF3B30] text-white"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-[18px]" />
+        </button>
+      </div>
+      <div
+        className="relative flex h-11 touch-pan-y items-center overflow-hidden rounded-xl bg-secondary px-3"
+        style={{
+          width: `calc(100% - ${reveal}px)`,
+          transition: dragging ? "none" : "width 0.2s ease",
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmRename();
+              else if (e.key === "Escape") setEditing(false);
+            }}
+            onBlur={confirmRename}
+            className="w-full bg-transparent text-sm text-foreground outline-none"
+          />
+        ) : (
+          <span className="truncate text-sm text-foreground">{name}</span>
+        )}
+      </div>
+    </li>
+  );
+}
+
 function Index() {
   const [rows, setRows] = useState<string[][]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -276,7 +390,7 @@ function Index() {
   );
   const [manageOpen, setManageOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
-  const [dayPopup, setDayPopup] = useState<{ date: Date; apre: string[]; chiude: string[] } | null>(null);
+  const [dayPopup, setDayPopup] = useState<{ date: Date; apre: ShiftEntry[]; chiude: ShiftEntry[] } | null>(null);
   const [newOption, setNewOption] = useState("");
   const [accent, setAccent] = useState(DEFAULT_ACCENT);
   const setAccentColor = (c: string) => {
@@ -425,15 +539,17 @@ function Index() {
   const openDayPopup = (date: Date | undefined) => {
     if (!date || !referenceSunday || rows.length === 0) return;
     const offset = differenceInCalendarDays(date, referenceSunday);
-    const apre: string[] = [];
-    const chiude: string[] = [];
+    const apre: ShiftEntry[] = [];
+    const chiude: ShiftEntry[] = [];
     for (const name of options) {
       const data = peopleByOffset.get(name)?.get(offset);
       if (!data) continue;
       const s = toMinutes(data.start);
       const e = toMinutes(data.end);
-      if (s !== null && s <= 10 * 60) apre.push(name);
-      if (e !== null && e >= 20 * 60) chiude.push(name);
+      if (s === null || e === null) continue;
+      const entry: ShiftEntry = { name, startLabel: data.start, endLabel: data.end, startMin: s, endMin: e };
+      if (s <= 10 * 60) apre.push(entry);
+      if (e >= 20 * 60) chiude.push(entry);
     }
     setDayPopup({ date, apre, chiude });
   };
@@ -650,11 +766,25 @@ function Index() {
             <h3 className="mb-1.5 text-lg font-semibold text-foreground">Chi apre</h3>
             {dayPopup && dayPopup.apre.length > 0 ? (
               <ul className="mb-4 space-y-1">
-                {dayPopup.apre.map((n) => (
-                  <li key={n} className="rounded-xl bg-secondary px-3 py-2 text-sm text-foreground">
-                    {n}
-                  </li>
-                ))}
+                {dayPopup.apre.map((entry) => {
+                  const { left, width } = barMetrics(entry.startMin, entry.endMin);
+                  return (
+                    <li
+                      key={entry.name}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-foreground" style={{ backgroundColor: "#E1E1E6" }}
+                    >
+                      <span className="flex-1 truncate">{entry.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
+                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-white">
+                        <div
+                          className="absolute inset-y-0 rounded-full"
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: accent }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{entry.endLabel}</span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="mb-4 text-sm text-muted-foreground">Nessuno.</p>
@@ -663,11 +793,25 @@ function Index() {
             <h3 className="mb-1.5 text-lg font-semibold text-foreground">Chi chiude</h3>
             {dayPopup && dayPopup.chiude.length > 0 ? (
               <ul className="space-y-1">
-                {dayPopup.chiude.map((n) => (
-                  <li key={n} className="rounded-xl bg-secondary px-3 py-2 text-sm text-foreground">
-                    {n}
-                  </li>
-                ))}
+                {dayPopup.chiude.map((entry) => {
+                  const { left, width } = barMetrics(entry.startMin, entry.endMin);
+                  return (
+                    <li
+                      key={entry.name}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-foreground" style={{ backgroundColor: "#E1E1E6" }}
+                    >
+                      <span className="flex-1 truncate">{entry.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
+                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-white">
+                        <div
+                          className="absolute inset-y-0 rounded-full"
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: accent }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{entry.endLabel}</span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground">Nessuno.</p>
@@ -692,7 +836,6 @@ function Index() {
               if (v && !options.includes(v)) {
                 persist([...options, v]);
                 setSelected(v);
-                setManageOpen(false);
               }
               setNewOption("");
             }}
@@ -712,23 +855,19 @@ function Index() {
               <li className="py-4 text-center text-sm text-muted-foreground">Nessuna voce.</li>
             )}
             {sortedOptions.map((o) => (
-              <li
+              <EntryRow
                 key={o}
-                className="flex items-center justify-between rounded-xl bg-secondary px-3 py-2"
-              >
-                <span className="truncate text-sm text-foreground">{o}</span>
-                <button
-                  type="button"
-                  aria-label={`Elimina ${o}`}
-                  className="text-muted-foreground transition-colors hover:text-destructive"
-                  onClick={() => {
-                    persist(options.filter((x) => x !== o));
-                    setSelected("");
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </li>
+                name={o}
+                onDelete={() => {
+                  persist(options.filter((x) => x !== o));
+                  if (selected === o) setSelected("");
+                }}
+                onRename={(newName) => {
+                  if (options.includes(newName)) return;
+                  persist(options.map((x) => (x === o ? newName : x)));
+                  if (selected === o) setSelected(newName);
+                }}
+              />
             ))}
           </ul>
           <Button variant="outline" className="rounded-xl" onClick={() => setManageOpen(false)}>
