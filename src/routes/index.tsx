@@ -674,7 +674,7 @@ function Index() {
                     >
                       <span className="flex-1 truncate">{entry.name}</span>
                       <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
-                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-border/60">
+                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-white">
                         <div
                           className="absolute inset-y-0 rounded-full"
                           style={{ left: `${left}%`, width: `${width}%`, backgroundColor: accent }}
@@ -701,7 +701,7 @@ function Index() {
                     >
                       <span className="flex-1 truncate">{entry.name}</span>
                       <span className="text-[10px] text-muted-foreground">{entry.startLabel}</span>
-                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-border/60">
+                      <div className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-white">
                         <div
                           className="absolute inset-y-0 rounded-full"
                           style={{ left: `${left}%`, width: `${width}%`, backgroundColor: accent }}
