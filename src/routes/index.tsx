@@ -1,27 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { Upload, Trash2, Users, X, Keyboard } from "lucide-react";
+import { Upload, Trash2, Users, Keyboard, Plus, ChevronDown, Check } from "lucide-react";
 import { format, addDays, isToday, startOfMonth, endOfMonth, startOfWeek, differenceInCalendarWeeks, differenceInCalendarDays } from "date-fns";
 import { it } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -278,13 +268,17 @@ function blockData(row: string[], cols: number[]): DayData {
 
 const SWIPE_ACTIONS_WIDTH = 80; // 2 pulsanti da 36px + gap 8px, allineati al bordo destro
 
-/** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). */
+/** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). Tocco semplice = seleziona. */
 function EntryRow({
   name,
+  selected,
+  onSelect,
   onDelete,
   onRename,
 }: {
   name: string;
+  selected?: boolean;
+  onSelect?: () => void;
   onDelete: () => void;
   onRename: (newName: string) => void;
 }) {
@@ -294,10 +288,12 @@ function EntryRow({
   const [draft, setDraft] = useState(name);
   const startX = useRef(0);
   const startReveal = useRef(0);
+  const moved = useRef(false);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (editing) return;
     setDragging(true);
+    moved.current = false;
     startX.current = e.clientX;
     startReveal.current = reveal;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -305,11 +301,18 @@ function EntryRow({
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
     const delta = startX.current - e.clientX;
+    if (Math.abs(delta) > 4) moved.current = true;
     setReveal(Math.min(SWIPE_ACTIONS_WIDTH, Math.max(0, startReveal.current + delta)));
   };
   const onPointerUp = () => {
     if (!dragging) return;
     setDragging(false);
+    if (!moved.current) {
+      // Tocco semplice (nessun trascinamento reale): se era chiusa, seleziona; se era aperta, richiudi.
+      if (reveal === 0) onSelect?.();
+      else setReveal(0);
+      return;
+    }
     setReveal((current) => (current > SWIPE_ACTIONS_WIDTH / 2 ? SWIPE_ACTIONS_WIDTH : 0));
   };
 
@@ -320,7 +323,7 @@ function EntryRow({
   };
 
   return (
-    <li className="relative h-11 overflow-hidden rounded-xl">
+    <li className="relative h-11 shrink-0 overflow-hidden rounded-xl">
       <div
         className="absolute inset-y-0 right-0 flex items-center justify-end gap-1 pl-1"
         style={{ width: SWIPE_ACTIONS_WIDTH }}
@@ -347,7 +350,10 @@ function EntryRow({
         </button>
       </div>
       <div
-        className="relative flex h-11 touch-pan-y items-center overflow-hidden rounded-xl bg-secondary px-3"
+        className={cn(
+          "relative flex h-11 touch-pan-y cursor-pointer items-center overflow-hidden rounded-xl bg-secondary px-3",
+          selected && "ring-2 ring-inset ring-foreground/70",
+        )}
         style={{
           width: `calc(100% - ${reveal}px)`,
           transition: dragging ? "none" : "width 0.2s ease",
@@ -367,10 +373,14 @@ function EntryRow({
               else if (e.key === "Escape") setEditing(false);
             }}
             onBlur={confirmRename}
+            onPointerDown={(e) => e.stopPropagation()}
             className="w-full bg-transparent text-sm text-foreground outline-none"
           />
         ) : (
-          <span className="truncate text-sm text-foreground">{name}</span>
+          <>
+            <span className="flex-1 truncate text-sm text-foreground">{name}</span>
+            {selected && <Check className="size-4 shrink-0 text-foreground" />}
+          </>
         )}
       </div>
     </li>
@@ -388,7 +398,8 @@ function Index() {
     () => [...options].sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),
     [options],
   );
-  const [manageOpen, setManageOpen] = useState(false);
+  const [namesOpen, setNamesOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [dayPopup, setDayPopup] = useState<{ date: Date; apre: ShiftEntry[]; chiude: ShiftEntry[] } | null>(null);
   const [newOption, setNewOption] = useState("");
@@ -592,33 +603,94 @@ function Index() {
                 <span>Carica file Excel</span>
               </Button>
               <div className="flex gap-2">
-                <Select
-                  value={selected}
-                  onValueChange={(value) => {
-                    if (value === "__add__") {
-                      setManageOpen(true);
-                      return;
+                <Popover
+                  open={namesOpen}
+                  onOpenChange={(o) => {
+                    setNamesOpen(o);
+                    if (!o) {
+                      setAdding(false);
+                      setNewOption("");
                     }
-                    setSelected(value);
                   }}
                 >
-                  <SelectTrigger
-                    className="h-9 w-full min-w-0 flex-1 rounded-xl px-2 text-sm [&>span]:truncate"
-                    aria-label="Filtra per voce"
-                  >
-                    <Users className="size-4 shrink-0 text-muted-foreground" />
-                    <SelectValue placeholder="Nome" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortedOptions.map((o) => (
-                      <SelectItem key={o} value={o}>
-                        {o}
-                      </SelectItem>
-                    ))}
-                    <SelectSeparator />
-                    <SelectItem value="__add__">Aggiungi nome</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-9 w-full min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-2 text-sm"
+                      aria-label="Filtra per voce"
+                    >
+                      <Users className="size-4 shrink-0 text-muted-foreground" />
+                      <span className={cn("flex-1 truncate text-left", !selected && "text-muted-foreground")}>
+                        {selected || "Nome"}
+                      </span>
+                      <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-72 rounded-2xl p-2">
+                    {/* Riga fissa: pulsante "+" e casella di inserimento (Opzione A: non scorre con la lista) */}
+                    <div className="mb-2 flex shrink-0 items-center gap-2">
+                      {adding ? (
+                        <input
+                          autoFocus
+                          value={newOption}
+                          onChange={(e) => setNewOption(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const v = newOption.trim();
+                              if (v && !options.includes(v)) {
+                                persist([...options, v]);
+                                setSelected(v);
+                              }
+                              setNewOption("");
+                            } else if (e.key === "Escape") {
+                              setAdding(false);
+                              setNewOption("");
+                            }
+                          }}
+                          placeholder="Nuovo nome"
+                          className="h-9 flex-1 rounded-xl border border-border bg-card px-3 text-sm text-foreground outline-none"
+                        />
+                      ) : (
+                        <span className="flex-1 truncate text-sm text-muted-foreground">Aggiungi nome</span>
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Aggiungi nome"
+                        onClick={() => setAdding((a) => !a)}
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#34C759] text-white"
+                      >
+                        <Plus className="size-5" />
+                      </button>
+                    </div>
+
+                    {/* Lista scrollabile: la riga sopra resta fissa anche con la tastiera aperta */}
+                    <ul className="max-h-64 space-y-1 overflow-y-auto">
+                      {sortedOptions.length === 0 && (
+                        <li className="py-4 text-center text-sm text-muted-foreground">Nessun nome.</li>
+                      )}
+                      {sortedOptions.map((o) => (
+                        <EntryRow
+                          key={o}
+                          name={o}
+                          selected={o === selected}
+                          onSelect={() => {
+                            setSelected(o);
+                            setNamesOpen(false);
+                          }}
+                          onDelete={() => {
+                            persist(options.filter((x) => x !== o));
+                            if (selected === o) setSelected("");
+                          }}
+                          onRename={(newName) => {
+                            if (options.includes(newName)) return;
+                            persist(options.map((x) => (x === o ? newName : x)));
+                            if (selected === o) setSelected(newName);
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  </PopoverContent>
+                </Popover>
                 <Popover open={colorOpen} onOpenChange={setColorOpen}>
                   <PopoverTrigger asChild>
                     <button
@@ -817,63 +889,6 @@ function Index() {
               <p className="text-sm text-muted-foreground">Nessuno.</p>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Gestisci voci</DialogTitle>
-            <DialogDescription>
-              Aggiungi o elimina le voci disponibili nel menu a tendina.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const v = newOption.trim();
-              if (v && !options.includes(v)) {
-                persist([...options, v]);
-                setSelected(v);
-              }
-              setNewOption("");
-            }}
-          >
-            <Input
-              value={newOption}
-              onChange={(e) => setNewOption(e.target.value)}
-              placeholder="Nuova voce"
-              className="rounded-xl"
-            />
-            <Button type="submit" className="rounded-xl">
-              Aggiungi
-            </Button>
-          </form>
-          <ul className="max-h-64 space-y-1 overflow-y-auto">
-            {sortedOptions.length === 0 && (
-              <li className="py-4 text-center text-sm text-muted-foreground">Nessuna voce.</li>
-            )}
-            {sortedOptions.map((o) => (
-              <EntryRow
-                key={o}
-                name={o}
-                onDelete={() => {
-                  persist(options.filter((x) => x !== o));
-                  if (selected === o) setSelected("");
-                }}
-                onRename={(newName) => {
-                  if (options.includes(newName)) return;
-                  persist(options.map((x) => (x === o ? newName : x)));
-                  if (selected === o) setSelected(newName);
-                }}
-              />
-            ))}
-          </ul>
-          <Button variant="outline" className="rounded-xl" onClick={() => setManageOpen(false)}>
-            <X className="mr-1 size-4" />
-            Chiudi
-          </Button>
         </DialogContent>
       </Dialog>
     </main>
