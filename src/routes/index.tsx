@@ -374,7 +374,7 @@ function EntryRow({
             }}
             onBlur={confirmRename}
             onPointerDown={(e) => e.stopPropagation()}
-            className="w-full bg-transparent text-sm text-foreground outline-none"
+            className="w-full bg-transparent text-[16px] text-foreground outline-none"
           />
         ) : (
           <>
@@ -413,6 +413,18 @@ function Index() {
     }
   };
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Blocca lo scroll della pagina sottostante mentre il menu nomi è aperto: il Popover, a
+  // differenza del Dialog, non lo fa in automatico, quindi senza questo il gesto di scorrimento
+  // sulla lista "sfugge" e scorre tutta la schermata invece della sola lista interna.
+  useEffect(() => {
+    if (!namesOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [namesOpen]);
 
   const [hydrated, setHydrated] = useState(false);
 
@@ -648,7 +660,7 @@ function Index() {
                             }
                           }}
                           placeholder="Nuovo nome"
-                          className="h-9 flex-1 rounded-xl border border-border bg-card px-3 text-sm text-foreground outline-none"
+                          className="h-9 flex-1 rounded-xl border border-border bg-card px-3 text-[16px] text-foreground outline-none"
                         />
                       ) : (
                         <span className="flex-1 truncate text-sm text-muted-foreground">Aggiungi nome</span>
@@ -664,7 +676,7 @@ function Index() {
                     </div>
 
                     {/* Lista scrollabile: la riga sopra resta fissa anche con la tastiera aperta */}
-                    <ul className="max-h-64 space-y-1 overflow-y-auto">
+                    <ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">
                       {sortedOptions.length === 0 && (
                         <li className="py-4 text-center text-sm text-muted-foreground">Nessun nome.</li>
                       )}
