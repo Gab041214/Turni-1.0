@@ -1,10 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-<<<<<<< HEAD
-import { Upload, Trash2, Users, X, Keyboard } from "lucide-react";
-=======
 import { Upload, Trash2, Users, Keyboard, Plus, ChevronDown, Check } from "lucide-react";
->>>>>>> sviluppo/main
 import { format, addDays, isToday, startOfMonth, endOfMonth, startOfWeek, differenceInCalendarWeeks, differenceInCalendarDays } from "date-fns";
 import { it } from "date-fns/locale";
 
@@ -272,26 +268,17 @@ function blockData(row: string[], cols: number[]): DayData {
 
 const SWIPE_ACTIONS_WIDTH = 80; // 2 pulsanti da 36px + gap 8px, allineati al bordo destro
 
-<<<<<<< HEAD
-/** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). */
-function EntryRow({
-  name,
-=======
 /** Riga voce con swipe da destra verso sinistra: rivela modifica (blu) ed elimina (rosso). Tocco semplice = seleziona. */
 function EntryRow({
   name,
   selected,
   onSelect,
->>>>>>> sviluppo/main
   onDelete,
   onRename,
 }: {
   name: string;
-<<<<<<< HEAD
-=======
   selected?: boolean;
   onSelect?: () => void;
->>>>>>> sviluppo/main
   onDelete: () => void;
   onRename: (newName: string) => void;
 }) {
@@ -301,18 +288,12 @@ function EntryRow({
   const [draft, setDraft] = useState(name);
   const startX = useRef(0);
   const startReveal = useRef(0);
-<<<<<<< HEAD
-=======
   const moved = useRef(false);
->>>>>>> sviluppo/main
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (editing) return;
     setDragging(true);
-<<<<<<< HEAD
-=======
     moved.current = false;
->>>>>>> sviluppo/main
     startX.current = e.clientX;
     startReveal.current = reveal;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -320,24 +301,18 @@ function EntryRow({
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
     const delta = startX.current - e.clientX;
-<<<<<<< HEAD
-=======
     if (Math.abs(delta) > 4) moved.current = true;
->>>>>>> sviluppo/main
     setReveal(Math.min(SWIPE_ACTIONS_WIDTH, Math.max(0, startReveal.current + delta)));
   };
   const onPointerUp = () => {
     if (!dragging) return;
     setDragging(false);
-<<<<<<< HEAD
-=======
     if (!moved.current) {
       // Tocco semplice (nessun trascinamento reale): se era chiusa, seleziona; se era aperta, richiudi.
       if (reveal === 0) onSelect?.();
       else setReveal(0);
       return;
     }
->>>>>>> sviluppo/main
     setReveal((current) => (current > SWIPE_ACTIONS_WIDTH / 2 ? SWIPE_ACTIONS_WIDTH : 0));
   };
 
@@ -348,11 +323,7 @@ function EntryRow({
   };
 
   return (
-<<<<<<< HEAD
-    <li className="relative h-11 overflow-hidden rounded-xl">
-=======
     <li className="relative h-11 shrink-0 overflow-hidden rounded-xl">
->>>>>>> sviluppo/main
       <div
         className="absolute inset-y-0 right-0 flex items-center justify-end gap-1 pl-1"
         style={{ width: SWIPE_ACTIONS_WIDTH }}
@@ -379,14 +350,10 @@ function EntryRow({
         </button>
       </div>
       <div
-<<<<<<< HEAD
-        className="relative flex h-11 touch-pan-y items-center overflow-hidden rounded-xl bg-secondary px-3"
-=======
         className={cn(
           "relative flex h-11 touch-pan-y cursor-pointer items-center overflow-hidden rounded-xl bg-secondary px-3",
           selected && "ring-2 ring-inset ring-foreground/70",
         )}
->>>>>>> sviluppo/main
         style={{
           width: `calc(100% - ${reveal}px)`,
           transition: dragging ? "none" : "width 0.2s ease",
@@ -406,12 +373,6 @@ function EntryRow({
               else if (e.key === "Escape") setEditing(false);
             }}
             onBlur={confirmRename}
-<<<<<<< HEAD
-            className="w-full bg-transparent text-sm text-foreground outline-none"
-          />
-        ) : (
-          <span className="truncate text-sm text-foreground">{name}</span>
-=======
             onPointerDown={(e) => e.stopPropagation()}
             className="w-full bg-transparent text-[16px] text-foreground outline-none"
           />
@@ -420,7 +381,6 @@ function EntryRow({
             <span className="flex-1 truncate text-sm text-foreground">{name}</span>
             {selected && <Check className="size-4 shrink-0 text-foreground" />}
           </>
->>>>>>> sviluppo/main
         )}
       </div>
     </li>
@@ -943,66 +903,6 @@ function Index() {
           </div>
         </DialogContent>
       </Dialog>
-<<<<<<< HEAD
-
-      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="rounded-2xl sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Gestisci voci</DialogTitle>
-            <DialogDescription>
-              Aggiungi o elimina le voci disponibili nel menu a tendina.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const v = newOption.trim();
-              if (v && !options.includes(v)) {
-                persist([...options, v]);
-                setSelected(v);
-              }
-              setNewOption("");
-            }}
-          >
-            <Input
-              value={newOption}
-              onChange={(e) => setNewOption(e.target.value)}
-              placeholder="Nuova voce"
-              className="rounded-xl"
-            />
-            <Button type="submit" className="rounded-xl">
-              Aggiungi
-            </Button>
-          </form>
-          <ul className="max-h-64 space-y-1 overflow-y-auto">
-            {sortedOptions.length === 0 && (
-              <li className="py-4 text-center text-sm text-muted-foreground">Nessuna voce.</li>
-            )}
-            {sortedOptions.map((o) => (
-              <EntryRow
-                key={o}
-                name={o}
-                onDelete={() => {
-                  persist(options.filter((x) => x !== o));
-                  if (selected === o) setSelected("");
-                }}
-                onRename={(newName) => {
-                  if (options.includes(newName)) return;
-                  persist(options.map((x) => (x === o ? newName : x)));
-                  if (selected === o) setSelected(newName);
-                }}
-              />
-            ))}
-          </ul>
-          <Button variant="outline" className="rounded-xl" onClick={() => setManageOpen(false)}>
-            <X className="mr-1 size-4" />
-            Chiudi
-          </Button>
-        </DialogContent>
-      </Dialog>
-=======
->>>>>>> sviluppo/main
     </main>
   );
 }
