@@ -180,14 +180,24 @@ async function parseExcel(
 /** Restituisce nero o bianco per il massimo contrasto rispetto al colore esadecimale dato. */
 type ShiftEntry = { name: string; startLabel: string; endLabel: string; startMin: number; endMin: number };
 
-/** Calcola posizione e larghezza (in %) del tratto colorato di un turno sul range 10:00-20:00. */
-function barMetrics(startMin: number, endMin: number): { left: number; width: number } {
-  const RANGE_START = 10 * 60;
-  const RANGE_END = 20 * 60;
-  const span = RANGE_END - RANGE_START;
-  const clamp = (v: number) => Math.min(Math.max(v, RANGE_START), RANGE_END);
-  const left = ((clamp(startMin) - RANGE_START) / span) * 100;
-  const right = ((clamp(endMin) - RANGE_START) / span) * 100;
+const BASE_RANGE_START = 10 * 60;
+const BASE_RANGE_END = 20 * 60;
+
+/**
+ * Calcola posizione e larghezza (in %) del tratto colorato di un turno, sul range
+ * [rangeStart, rangeEnd] passato da chi chiama: di norma 10:00-20:00, ma esteso quando
+ * quel giorno ci sono turni fuori da questi orari (es. venerdì/sabato fino alle 20:30).
+ */
+function barMetrics(
+  startMin: number,
+  endMin: number,
+  rangeStart: number = BASE_RANGE_START,
+  rangeEnd: number = BASE_RANGE_END,
+): { left: number; width: number } {
+  const span = rangeEnd - rangeStart;
+  const clamp = (v: number) => Math.min(Math.max(v, rangeStart), rangeEnd);
+  const left = ((clamp(startMin) - rangeStart) / span) * 100;
+  const right = ((clamp(endMin) - rangeStart) / span) * 100;
   return { left, width: Math.max(right - left, 3) };
 }
 
@@ -225,9 +235,22 @@ type DayData = {
 } | null;
 type WeekData = { monday: Date | undefined; days: DayData[] };
 
+/**
+ * Confronta il nominativo del calendario con il valore della cella Excel in modo
+ * tollerante: normalizza entrambi (minuscolo, spazi multipli ridotti) e considera
+ * corrispondenza anche se uno dei due è contenuto nell'altro — così "Rossi" trova
+ * una cella "Mario Rossi", e viceversa.
+ */
+function nameMatches(cellValue: string, selected: string): boolean {
+  const cell = norm(cellValue);
+  const sel = norm(selected);
+  if (!sel || !cell) return false;
+  return cell === sel || cell.includes(sel) || sel.includes(cell);
+}
+
 /** Ricostruisce la mappa offset -> turno (Sunday=0, Mon..Sat=1..6, poi +7 per ogni riga) per un nominativo. */
 function offsetMapForName(rows: string[][], name: string): Map<number, DayData> {
-  const matching = rows.filter((r) => (r[1] ?? "").trim() === name);
+  const matching = rows.filter((r) => nameMatches(r[1] ?? "", name));
   const byOffset = new Map<number, DayData>();
   matching.forEach((row, i) => {
     const base = i * 7;
@@ -401,7 +424,12 @@ function Index() {
   const [namesOpen, setNamesOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
-  const [dayPopup, setDayPopup] = useState<{ date: Date; apre: ShiftEntry[]; chiude: ShiftEntry[] } | null>(null);
+  const [dayPopup, setDayPopup] = useState<{
+    date: Date;
+    apre: ShiftEntry[];
+    chiude: ShiftEntry[];
+    barRange: { start: number; end: number };
+  } | null>(null);
   const [newOption, setNewOption] = useState("");
   const [accent, setAccent] = useState(DEFAULT_ACCENT);
   const setAccentColor = (c: string) => {
@@ -513,7 +541,7 @@ function Index() {
 
   const weeks: WeekData[] = useMemo(() => {
     if (!selected || rows.length === 0) return [];
-    const matching = rows.filter((r) => (r[1] ?? "").trim() === selected);
+    const matching = rows.filter((r) => nameMatches(r[1] ?? "", selected));
 
     // Each CSV row covers Sunday -> Saturday starting from the reference Sunday.
     // key = day offset from the reference Sunday
@@ -562,19 +590,33 @@ function Index() {
   const openDayPopup = (date: Date | undefined) => {
     if (!date || !referenceSunday || rows.length === 0) return;
     const offset = differenceInCalendarDays(date, referenceSunday);
-    const apre: ShiftEntry[] = [];
-    const chiude: ShiftEntry[] = [];
+    const dayEntries: ShiftEntry[] = [];
     for (const name of options) {
       const data = peopleByOffset.get(name)?.get(offset);
       if (!data) continue;
       const s = toMinutes(data.start);
       const e = toMinutes(data.end);
       if (s === null || e === null) continue;
-      const entry: ShiftEntry = { name, startLabel: data.start, endLabel: data.end, startMin: s, endMin: e };
-      if (s <= 10 * 60) apre.push(entry);
-      if (e >= 20 * 60) chiude.push(entry);
+      dayEntries.push({ name, startLabel: data.start, endLabel: data.end, startMin: s, endMin: e });
     }
-    setDayPopup({ date, apre, chiude });
+
+    const apre = dayEntries.filter((entry) => entry.startMin <= BASE_RANGE_START);
+
+    // "Chi chiude" è solo chi ha l'orario di chiusura più tardo di quel giorno specifico,
+    // non chiunque arrivi a una soglia fissa: se quel giorno c'è un turno fino alle 20:30,
+    // chi chiude alle 20:00 lo stesso giorno non compare più nell'elenco.
+    const maxEnd = dayEntries.reduce((max, entry) => Math.max(max, entry.endMin), 0);
+    const chiude = maxEnd >= BASE_RANGE_END ? dayEntries.filter((entry) => entry.endMin === maxEnd) : [];
+
+    // Range della barra: l'inizio resta sempre fissato alle 10:00 (un turno che comincia
+    // prima resta comunque segnalato in lista, ma sulla barra parte dal bordo sinistro).
+    // La fine invece è dinamica: si allarga oltre le 20:00 se quel giorno c'è un turno che
+    // chiude più tardi (es. venerdì/sabato alle 20:30), qualunque sia l'orario esatto.
+    const barRange = {
+      start: BASE_RANGE_START,
+      end: Math.max(BASE_RANGE_END, maxEnd),
+    };
+    setDayPopup({ date, apre, chiude, barRange });
   };
 
 
@@ -851,7 +893,12 @@ function Index() {
             {dayPopup && dayPopup.apre.length > 0 ? (
               <ul className="mb-4 space-y-1">
                 {dayPopup.apre.map((entry) => {
-                  const { left, width } = barMetrics(entry.startMin, entry.endMin);
+                  const { left, width } = barMetrics(
+                    entry.startMin,
+                    entry.endMin,
+                    dayPopup.barRange.start,
+                    dayPopup.barRange.end,
+                  );
                   return (
                     <li
                       key={entry.name}
@@ -878,7 +925,12 @@ function Index() {
             {dayPopup && dayPopup.chiude.length > 0 ? (
               <ul className="space-y-1">
                 {dayPopup.chiude.map((entry) => {
-                  const { left, width } = barMetrics(entry.startMin, entry.endMin);
+                  const { left, width } = barMetrics(
+                    entry.startMin,
+                    entry.endMin,
+                    dayPopup.barRange.start,
+                    dayPopup.barRange.end,
+                  );
                   return (
                     <li
                       key={entry.name}
